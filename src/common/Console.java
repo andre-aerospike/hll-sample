@@ -26,9 +26,18 @@ import com.aerospike.client.Log.Level;
 public class Console implements Log.Callback {
 
 	private static final SimpleDateFormat Formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
+	private Level m_level;
 
 	public Console() {
 		Log.setCallback(this);
+	}
+
+	public void debug(String format, Object... args) {
+		write(Level.DEBUG, format, args);
+	}
+
+	public void debug(String message) {
+		write(Level.DEBUG, message);
 	}
 
 	public void info(String format, Object... args) {
@@ -60,7 +69,10 @@ public class Console implements Log.Callback {
 	}
 
 	public void write(Level level, String message) {
-		write(Formatter.format(Calendar.getInstance().getTime()) + ' ' + level + ' ' + message);
+		if (level.ordinal() <= m_level.ordinal())
+		{
+			write(Formatter.format(Calendar.getInstance().getTime()) + ' ' + level + ' ' + message);
+		}
 	}
 
 	public void write(String format, Object... args) {
@@ -69,6 +81,11 @@ public class Console implements Log.Callback {
 
 	public void write(String message) {
 		System.out.println(message);
+	}
+
+	public void setLevel(Level level) {
+		Log.setLevel(level);
+		m_level = level;
 	}
 
 	@Override
