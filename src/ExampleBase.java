@@ -1,6 +1,10 @@
 //import java.util.List;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
+import java.lang.management.MemoryUsage;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -10,6 +14,8 @@ import com.aerospike.client.AerospikeClient;
 import com.aerospike.client.Value;
 import com.aerospike.client.Value.IntegerValue;
 import com.aerospike.client.policy.WritePolicy;
+import com.google.common.base.Function;
+import com.google.common.collect.Lists;
 
 import common.Console;
 
@@ -118,10 +124,46 @@ public abstract class ExampleBase
 		return list;
 	}
 
+	void PrintStats(String groupName, List<Value> group)
+	{
+		Function<Value, Integer> ToInteger =
+			    new Function<Value,Integer>() {
+			        @Override
+					public Integer apply(Value i) { return i.toInteger(); }
+			    };
+
+		// First transform our list from type Value to Integer
+		List<Integer> intList = Lists.transform(group, ToInteger);
+
+	    // Measure the memory consumption of the HashSet - check the heap before creation
+	    MemoryMXBean mbean = ManagementFactory.getMemoryMXBean();
+	    System.gc();
+	    MemoryUsage beforeHeapMemoryUsage = mbean.getHeapMemoryUsage();
+
+		int count = 0;
+
+		// Memory usage is 3x higher if we use Integer vs. Value.  Why?
+	    boolean useInteger = true;
+	    if (useInteger)
+	    {
+			HashSet<Integer> hs = new HashSet<Integer>();
+			hs.addAll(intList);
+			count = hs.size();
+	    }
+	    else
+	    {
+	    	HashSet<Value> hs = new HashSet<Value>();
+			hs.addAll(group);
+			count = hs.size();
+	    }
+
+	    MemoryUsage afterHeapMemoryUsage = mbean.getHeapMemoryUsage();
+	    long consumed = afterHeapMemoryUsage.getUsed() -
+	                    beforeHeapMemoryUsage.getUsed();
+
+		m_console.write("HASHSET %s\tunique items: %d\tmemory:%d", groupName, count, consumed);
+	}
 
 
 	abstract boolean Run();
-
-
-
 }
