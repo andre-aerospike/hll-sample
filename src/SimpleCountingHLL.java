@@ -1,3 +1,4 @@
+import java.util.ArrayList;
 import java.util.List;
 
 import com.aerospike.client.Bin;
@@ -11,7 +12,7 @@ import com.aerospike.client.operation.HLLPolicy;
 
 public class SimpleCountingHLL extends ExampleBase
 {
-	// Add dataset to a HLL
+	// Add dataset to a HLL.
 	void AddData(String groupName, List<Value> group, String binName, int logbits, int hashbits)
 	{
 		Key key = new Key(m_namespace, m_set, groupName);
@@ -22,78 +23,195 @@ public class SimpleCountingHLL extends ExampleBase
 			Operation.put(bin),
 		};
 
-		Record record = m_client.operate(m_writePolicy, key, ops);
-		m_console.debug("-- Group %s --\tadd bin %s (%d, %d)", groupName, binName, logbits, hashbits);
+		m_console.info("-- AddData --\t%s\tbin:%s\t(%d, %d)", groupName, binName, logbits, hashbits);
+		Record record = m_client.operate(null, key, ops);
 		m_console.debug("  Operate result: " + record);
+		m_console.debug("  Entries that updated registers: %d", record.getLong(binName));
 	}
 
 
-	// Get count from HLL bin
-	void GetCount(String groupName, String binName)
+	// Print count from HLL bin.
+	void CountUsingHLL(String groupName, String binName)
 	{
 		Key key = new Key(m_namespace, m_set, groupName);
 		Operation[] ops = new Operation[]
 		{
-			//HLLOperation.init(HLLPolicy.Default, binName, 16, 4),
-			//HLLOperation.add(HLLPolicy.Default, binName, group),
 			HLLOperation.getCount(binName),
-			HLLOperation.getCount(binName),
+			Operation.get(binName),
 		};
 
-		Record record = m_client.operate(m_writePolicy, key, ops);
+		Record record = m_client.operate(null, key, ops);
+		m_console.info("-- Get Count --\t%s\tbin:%s", groupName, binName);
 		m_console.debug("  Operate result: " + record);
 
-		List<?> result_list = record.getList(binName);
-		/*
-		long count1 = (Long)result_list.get(2);
-		long count2 = (Long)result_list.get(3);
-		List<?> description = (List<?>)result_list.get(4);
-		*/
-
-		/*
-		m_console.write("Count1 - " + count1);
-		m_console.write("Count2 - " + count2);
-		m_console.write("Desc - " + description);
-		m_console.write(result_list.toString());
-		*/
-		m_console.debug(result_list.toString());
-
-		long count = (Long)result_list.get(0);
-		m_console.info("-- Group %s --\tHLL Count: %d", groupName, count);
-		m_console.info("  Operate result: " + record);
+		List<?> results = record.getList(binName);
+		long count = (Long)results.get(0);
+		Value hllval = (Value)results.get(1);
+		m_console.write("Using HLL (%s bits)\t%s\tcount:%d\tmemory:%d", binName, groupName, count, hllval.estimateSize());
 	}
 
-	@Override
-	boolean Run()
+	// Get the HLL Value.
+	Value GetHLLValue(String groupName, String binName)
 	{
-		m_console.setLevel(Level.WARN);
+		Key key = new Key(m_namespace, m_set, groupName);
+		Operation[] ops = new Operation[]
+		{
+			Operation.get(binName),
+		};
 
+		Record record = m_client.operate(null, key, ops);
+		m_console.info("-- Get HLL Value --\t%s\tbin:%s", groupName, binName);
+		m_console.debug("  Operate result: " + record);
+
+		return record.getHLLValue(binName);
+	}
+
+
+	// Get HLL records
+	List<Value.HLLValue> GetHLLValues(String binName)
+	{
+		List<Value.HLLValue> hllvalues = new ArrayList<Value.HLLValue>();
+		Key[] keys = new Key[]
+				{
+						new Key(m_namespace, m_set, "A"),
+						new Key(m_namespace, m_set, "B"),
+						new Key(m_namespace, m_set, "C"),
+						new Key(m_namespace, m_set, "D"),
+						new Key(m_namespace, m_set, "E"),
+				};
+		Record[] records = m_client.get(null, keys, binName);
+		for (int i=0; i<records.length; i++)
+		{
+			hllvalues.add(records[i].getHLLValue(binName));
+		}
+		return hllvalues;
+	}
+
+	// Get count from HLL bin.
+	void GetIntersectCount(String groupName, String binName)
+	{
+		Key key = new Key(m_namespace, m_set, groupName);
+		Operation[] ops = new Operation[]
+		{
+			HLLOperation.getCount(binName),
+			Operation.get(binName),
+		};
+
+		Record record = m_client.operate(null, key, ops);
+		m_console.info("-- Get Count --\t%s\tbin:%s", groupName, binName);
+		m_console.debug("  Operate result: " + record);
+
+		List<?> results = record.getList(binName);
+		long count = (Long)results.get(0);
+		Value hllval = (Value)results.get(1);
+		m_console.write("Using HLL (%s bits)\t%s\tcount:%d\tmemory:%d", binName, groupName, count, hllval.estimateSize());
+	}
+
+
+
+	// Create a HLL to estimate the cardinality of a dataset.
+	void EstimateCardinality() throws InterruptedException
+	{
+		String binName = "12-0";
+
+		// Initialise dataset
+		List<Value> A = GetGroup("A");
+		CountUsingHashSet("A", A);
+
+		// Add dataset to HLL record, then estimate cardinality
+		AddData("A", A, binName, 12, 0);
+		CountUsingHLL("A", binName);
+	}
+
+	void Run2() throws InterruptedException
+	{
+		String binName = "12-4";
+
+		// Initialise datasets
 		List<Value> A = GetGroup("A");
 		List<Value> B = GetGroup("B");
 		List<Value> C = GetGroup("C");
 		List<Value> D = GetGroup("D");
 		List<Value> E = GetGroup("E");
 
-		PrintStats("A", A);
-		AddData("A", A, "4-4", 4, 4);
-		AddData("B", B, "4-4", 4, 4);
-		AddData("C", C, "4-4", 4, 4);
-		AddData("D", D, "4-4", 4, 4);
-		AddData("E", E, "4-4", 4, 4);
-		AddData("A", A, "16-4", 16, 4);
-		AddData("B", B, "16-4", 16, 4);
-		AddData("C", C, "16-4", 16, 4);
-		AddData("D", D, "16-4", 16, 4);
-		AddData("E", E, "16-4", 16, 4);
+		// Add datasets to HLL record
+		AddData("A", A, binName, 12, 0);
+		AddData("B", B, binName, 12, 4);
+		AddData("C", C, binName, 12, 4);
+		AddData("D", D, binName, 12, 4);
+		AddData("E", E, binName, 12, 4);
 
-		GetCount("A", "4-4");
-		GetCount("A", "16-4");
-		GetCount("B", "4-4");
-		GetCount("C", "4-4");
-		GetCount("D", "4-4");
-		GetCount("E", "4-4");
+		// Get number of unique items in each dataset
+		CountUsingHashSet("A", A);
+		CountUsingHLL("A", binName);
+		CountUsingHashSet("B", B);
+		CountUsingHLL("B", binName);
+		CountUsingHashSet("C", C);
+		CountUsingHLL("C", binName);
+		CountUsingHashSet("D", D);
+		CountUsingHLL("D", binName);
+		CountUsingHashSet("E", E);
+		CountUsingHLL("E", binName);
+
+		// Get HLL records
+		List<Value.HLLValue> hllvalues = GetHLLValues(binName);
+
+		/*
+		List<Value.HLLValue> hllvalues = new ArrayList<Value.HLLValue>();
+		Key[] keys = new Key[]
+				{
+						new Key(m_namespace, m_set, "A"),
+						new Key(m_namespace, m_set, "B"),
+						new Key(m_namespace, m_set, "C"),
+						new Key(m_namespace, m_set, "D"),
+						new Key(m_namespace, m_set, "E"),
+				};
+		Record[] records = m_client.get(null, keys, binName);
+		for (int i=0; i<records.length; i++)
+		{
+			hllvalues.add(records[i].getHLLValue(binName));
+		}
+		//m_console.write("Got " + records[0]);
+		//hllvalues.add(e)
+		*/
+	}
+
+
+	void SummitHLL() throws InterruptedException
+	{
+		String groupName = "A";
+
+		// Initialise dataset
+		List<Value> A = GetGroup(groupName);
+		CountUsingHashSet(groupName, A);
+
+		String binName = "HLL-12";
+		int logbits = 12;
+		int hashbits = 0;
+
+		// Add dataset to HLL record, then estimate cardinality
+		Key key = new Key(m_namespace, m_set, groupName);
+		Operation[] ops = new Operation[] {
+			HLLOperation.add(HLLPolicy.Default, binName, A, logbits, hashbits),
+			HLLOperation.getCount(binName),
+		};
+		Record record = m_client.operate(null, key, ops);
+
+		List<?> results = record.getList(binName);
+		long count = (Long)results.get(1);
+		m_console.write("Using HLL (%s bits)\t%s\tcount:%d", binName, groupName, count);
+	}
+
+
+	@Override
+	boolean Run() throws InterruptedException
+	{
+		m_console.setLevel(Level.WARN);
+		m_client.truncate(null,  m_namespace, null, null);
+
+		SummitHLL();
+		EstimateCardinality();
 
 		return true;
 	}
-
 }

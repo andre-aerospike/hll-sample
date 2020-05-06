@@ -9,11 +9,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 
 import com.aerospike.client.AerospikeClient;
 import com.aerospike.client.Value;
 import com.aerospike.client.Value.IntegerValue;
-import com.aerospike.client.policy.WritePolicy;
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 
@@ -27,7 +27,6 @@ public abstract class ExampleBase
 	String m_set = "set";
 
 	Console m_console;
-	WritePolicy m_writePolicy;
 	AerospikeClient m_client;
 
 	Random m_random;
@@ -36,7 +35,6 @@ public abstract class ExampleBase
 	{
         m_client = new AerospikeClient(m_host, m_port);
 		m_console = new Console();
-		m_writePolicy = new WritePolicy();
 
 		m_random = new Random();
 		m_random.setSeed(12345);	// So we can get consistent runs
@@ -91,16 +89,17 @@ public abstract class ExampleBase
 		}
 	}
 
-	int m_MAX    =  100000;
+	int m_MAX    =  200000;
 	int m_SIZE   = 1000000; // Number of elements in each group
 
 	Entry<String, GroupParams> e;
 	final Map<String, GroupParams> m_groupdef = Map.ofEntries(
 			//		  name				   count		values			min		max			hide range
-			Map.entry("A", new GroupParams(m_SIZE,		GroupType.All,		0,	m_MAX,		false)),
+			Map.entry("A", new GroupParams(20000000,		GroupType.All,		0,	2000000,	false)),
+			//Map.entry("A", new GroupParams(m_SIZE,		GroupType.All,		0,	m_MAX/2,	false)),
 			Map.entry("B", new GroupParams(m_SIZE,		GroupType.Even,		0,	m_MAX,		false)),
 			Map.entry("C", new GroupParams(m_SIZE,		GroupType.Odd,		0,	m_MAX,		false)),
-			Map.entry("D", new GroupParams(m_SIZE,		GroupType.All,		0,	m_MAX/2,	true)),
+			Map.entry("D", new GroupParams(m_SIZE,		GroupType.All,		0,	m_MAX/4,	true)),
 			Map.entry("E", new GroupParams(m_SIZE/20,	GroupType.All,	 4000,	8000,		true))
 			);
 
@@ -124,7 +123,9 @@ public abstract class ExampleBase
 		return list;
 	}
 
-	void PrintStats(String groupName, List<Value> group)
+
+	// Non-probabilistic method of counting using a HashSet.
+	void CountUsingHashSet(String groupName, List<Value> group) throws InterruptedException
 	{
 		Function<Value, Integer> ToInteger =
 			    new Function<Value,Integer>() {
@@ -138,6 +139,7 @@ public abstract class ExampleBase
 	    // Measure the memory consumption of the HashSet - check the heap before creation
 	    MemoryMXBean mbean = ManagementFactory.getMemoryMXBean();
 	    System.gc();
+	    TimeUnit.MILLISECONDS.sleep(500);
 	    MemoryUsage beforeHeapMemoryUsage = mbean.getHeapMemoryUsage();
 
 		int count = 0;
@@ -161,9 +163,9 @@ public abstract class ExampleBase
 	    long consumed = afterHeapMemoryUsage.getUsed() -
 	                    beforeHeapMemoryUsage.getUsed();
 
-		m_console.write("HASHSET %s\tunique items: %d\tmemory:%d", groupName, count, consumed);
+		m_console.write("Using HashSet\t\t%s\tcount:%d\tmemory:%d", groupName, count, consumed);
 	}
 
 
-	abstract boolean Run();
+	abstract boolean Run() throws InterruptedException;
 }
